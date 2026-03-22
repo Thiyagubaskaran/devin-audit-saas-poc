@@ -88,6 +88,10 @@ router.post('/:id/images', authenticate, upload.array('images', 10), (req, res) 
       return res.status(404).json({ error: 'Audit not found' });
     }
 
+    if (req.user.role !== 'admin' && audit.auditor_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No images uploaded' });
     }
