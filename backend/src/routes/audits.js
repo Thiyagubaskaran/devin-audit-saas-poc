@@ -146,6 +146,44 @@ router.get('/', authenticate, (req, res) => {
   }
 });
 
+// Get audit stats (admin only) - must be before /:id to avoid matching "stats" as an id
+router.get('/stats/summary', authenticate, requireRole('admin'), (req, res) => {
+  try {
+    const totalAudits = db.prepare('SELECT COUNT(*) as count FROM audits').get().count;
+    const totalTemplates = db.prepare('SELECT COUNT(*) as count FROM audit_templates').get().count;
+    const totalAuditors = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'auditor'").get().count;
+
+    const recentAudits = db.prepare(`
+      SELECT a.submitted_at, t.title as template_title, u.name as auditor_name
+      FROM audits a
+      JOIN audit_templates t ON a.template_id = t.id
+      JOIN users u ON a.auditor_id = u.id
+      ORDER BY a.submitted_at DESC
+      LIMIT 5
+    `).all();
+
+    const auditsByTemplate = db.prepare(`
+      SELECT t.title, COUNT(a.id) as count
+      FROM audit_templates t
+      LEFT JOIN audits a ON t.id = a.template_id
+      GROUP BY t.id, t.title
+    `).all();
+
+    res.json({
+      stats: {
+        totalAudits,
+        totalTemplates,
+        totalAuditors,
+        recentAudits,
+        auditsByTemplate
+      }
+    });
+  } catch (err) {
+    console.error('Get stats error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get single audit with responses and images
 router.get('/:id', authenticate, (req, res) => {
   try {
@@ -194,44 +232,6 @@ router.get('/:id', authenticate, (req, res) => {
     });
   } catch (err) {
     console.error('Get audit error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get audit stats (admin only)
-router.get('/stats/summary', authenticate, requireRole('admin'), (req, res) => {
-  try {
-    const totalAudits = db.prepare('SELECT COUNT(*) as count FROM audits').get().count;
-    const totalTemplates = db.prepare('SELECT COUNT(*) as count FROM audit_templates').get().count;
-    const totalAuditors = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'auditor'").get().count;
-
-    const recentAudits = db.prepare(`
-      SELECT a.submitted_at, t.title as template_title, u.name as auditor_name
-      FROM audits a
-      JOIN audit_templates t ON a.template_id = t.id
-      JOIN users u ON a.auditor_id = u.id
-      ORDER BY a.submitted_at DESC
-      LIMIT 5
-    `).all();
-
-    const auditsByTemplate = db.prepare(`
-      SELECT t.title, COUNT(a.id) as count
-      FROM audit_templates t
-      LEFT JOIN audits a ON t.id = a.template_id
-      GROUP BY t.id, t.title
-    `).all();
-
-    res.json({
-      stats: {
-        totalAudits,
-        totalTemplates,
-        totalAuditors,
-        recentAudits,
-        auditsByTemplate
-      }
-    });
-  } catch (err) {
-    console.error('Get stats error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
